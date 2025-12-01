@@ -5,6 +5,7 @@ import cv2
 import time
 from tensorflow.keras.preprocessing.image import img_to_array
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+import os
 
 # ================================
 # CSS RESPONSIVE UNTUK MOBILE
@@ -122,7 +123,7 @@ if mode == "📸 Capture Photo":
 
     if img:
         frame = cv2.imdecode(np.frombuffer(img.getvalue(), np.uint8), cv2.IMREAD_COLOR)
-        st.image(frame, channels="BGR", use_container_width=True)
+        st.image(frame, channels="BGR", width="stretch")
 
         label, conf = predict_single_image(frame)
         st.subheader(f"Hasil: {label} ({conf:.2f}%)")
@@ -139,39 +140,45 @@ if mode == "📸 Capture Photo":
 # ================================
 else:
     st.subheader("Live Stream")
+    IS_CLOUD = os.environ.get("STREAMLIT_SERVER_RUN_ON_SAVE") is not None
 
-    if "live_label" not in st.session_state:
-        st.session_state["live_label"] = "Menunggu..."
-        st.session_state["live_conf"] = 0.0
+    if IS_CLOUD:
+        st.warning("Live Stream tidak didukung di Streamlit Cloud. Gunakan mode Foto.")
+    else:
 
-    def update_result(result):
-        st.session_state["live_label"] = result["label"]
-        st.session_state["live_conf"] = result["conf"]
-        st.session_state["updated"] = True
 
-    webrtc_ctx = webrtc_streamer(
-        key="live_mobile",
-        video_processor_factory=DangerProcessor,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True,
-    )
+        if "live_label" not in st.session_state:
+            st.session_state["live_label"] = "Menunggu..."
+            st.session_state["live_conf"] = 0.0
 
-    if webrtc_ctx.video_processor:
-        webrtc_ctx.video_processor.callback = update_result
+        def update_result(result):
+            st.session_state["live_label"] = result["label"]
+            st.session_state["live_conf"] = result["conf"]
+            st.session_state["updated"] = True
 
-    placeholder = st.empty()
+        webrtc_ctx = webrtc_streamer(
+            key="live_mobile",
+            video_processor_factory=DangerProcessor,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
 
-    if st.session_state.get("updated", False):
-        st.session_state["updated"] = False
-        label = st.session_state["live_label"]
-        conf = st.session_state["live_conf"]
+        if webrtc_ctx.video_processor:
+            webrtc_ctx.video_processor.callback = update_result
 
-        placeholder.markdown(f"""
-        <h3>{label}</h3>
-        Akurasi: {conf:.2f}%<br>
+        placeholder = st.empty()
 
-        <div class='risk-box'>
-            <b>⚠ Risiko:</b><br>{RISKS.get(label, "-")}
-        </div>
-        """, unsafe_allow_html=True)
+        if st.session_state.get("updated", False):
+            st.session_state["updated"] = False
+            label = st.session_state["live_label"]
+            conf = st.session_state["live_conf"]
+
+            placeholder.markdown(f"""
+            <h3>{label}</h3>
+            Akurasi: {conf:.2f}%<br>
+
+            <div class='risk-box'>
+                <b>⚠ Risiko:</b><br>{RISKS.get(label, "-")}
+            </div>
+            """, unsafe_allow_html=True)
